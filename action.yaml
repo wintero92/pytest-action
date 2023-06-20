@@ -1,0 +1,78 @@
+name: Pytest
+description: Run pytest with given minimum coverage.
+
+inputs:
+  package-name:
+    description: "Main module name for code coverage report."
+    required: false
+    default: ""
+
+  min-cov:
+    description: "Minimum code coverage."
+    required: false
+    default: "0"
+
+  retention-days:
+    description: "Retention days for artifacts."
+    required: false
+    default: "10"
+
+  target:
+    description: "Folder which contains the targeted tests."
+    required: false
+    default: "tests/"
+
+  logs:
+    description: "Logs from test run. Can be overloaded with wildcard pattern."
+    required: false
+    default: "*log"
+
+runs:
+  using: "composite"
+
+  steps:
+    - name: Poetry install
+      uses: wintero92/poetry-install-action@v1
+
+    - name: Pytest with code coverage
+      if: inputs.package-name != ''
+      shell: bash
+      run: |
+        source .venv/bin/activate
+        coverage run --source=${{inputs.package-name}} -m pytest -s ${{inputs.target}}
+        coverage html
+        coverage report --fail-under=${{inputs.min-cov}}
+
+    - name: Pytest
+      if: inputs.package-name == ''
+      shell: bash
+      run: |
+        source .venv/bin/activate
+        pytest -s ${{inputs.target}}
+
+    - name: Prepare artifact name
+      if: always()
+      shell: bash
+      run: |
+        TARGET=${{inputs.target}}
+        TARGET=${TARGET//\//-}
+        TARGET=${TARGET%-}
+        TIMESTAMP=$(date +%s)
+        echo ARTIFACT_NAME=${TARGET}-${TIMESTAMP} >> $GITHUB_ENV
+
+    - name: Upload pytest report
+      uses: actions/upload-artifact@v3
+      with:
+        name: pytest-report-${{env.ARTIFACT_NAME}}
+        path: htmlcov
+        retention-days: ${{inputs.retention-days}}
+        if-no-files-found: ignore
+
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: logs-${{env.ARTIFACT_NAME}}
+        path: ${{inputs.logs}}
+        retention-days: ${{inputs.retention-days}}
+        if-no-files-found: ignore
